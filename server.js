@@ -23,6 +23,8 @@ const PORT = process.env.PORT || 3000;
 const INSPECTOR_CLIENT_PORT = 6274; // Internal port for inspector client
 const SERVER_PORT = process.env.SERVER_PORT || 6277;
 
+// Set a dummy token to satisfy the proxy - auth is disabled anyway
+const DUMMY_TOKEN = 'wrapper-no-auth-needed';
 
 console.log('🚀 Starting MCP Inspector Wrapper...');
 console.log(`Environment: NODE_ENV=${process.env.NODE_ENV}`);
@@ -59,8 +61,12 @@ const inspector = spawn('npx', ['@modelcontextprotocol/inspector'], {
     ...process.env,
     CLIENT_PORT: INSPECTOR_CLIENT_PORT,
     SERVER_PORT,
+    // Set a consistent token for internal communication
+    MCP_PROXY_AUTH_TOKEN: DUMMY_TOKEN,
     // Disable auto-opening browser in production
-    MCP_AUTO_OPEN_ENABLED: process.env.MCP_AUTO_OPEN_ENABLED || 'false'
+    MCP_AUTO_OPEN_ENABLED: process.env.MCP_AUTO_OPEN_ENABLED || 'false',
+    // Disable authentication for easier access through proxy
+    DANGEROUSLY_OMIT_AUTH: process.env.DANGEROUSLY_OMIT_AUTH || 'true'
   },
   stdio: 'inherit',
   shell: true
@@ -80,7 +86,7 @@ inspector.on('exit', (code) => {
 
 // Wait for inspector to start, then set up proxy
 setTimeout(() => {
-  console.log('\n� Setting up proxy to MCP Inspector...');
+  console.log('\n🔗 Setting up proxy to MCP Inspector...');
   
   // Proxy all other requests to the MCP Inspector client
   app.use('/', createProxyMiddleware({
@@ -88,6 +94,12 @@ setTimeout(() => {
     changeOrigin: true,
     ws: true, // Proxy websockets
     logLevel: 'silent',
+    onProxyReq: (proxyReq, req, res) => {
+      // Add the auth token to proxied requests if needed
+      if (process.env.DANGEROUSLY_OMIT_AUTH !== 'true') {
+        proxyReq.setHeader('Authorization', `Bearer ${DUMMY_TOKEN}`);
+      }
+    },
     onError: (err, req, res) => {
       console.error('Proxy error:', err.message);
       res.status(502).json({ 
