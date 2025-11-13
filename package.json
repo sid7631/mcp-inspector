@@ -1,0 +1,28 @@
+{
+  "name": "mcp-inspector-wrapper",
+  "version": "1.0.0",
+  "description": "Wrapper for MCP Inspector with custom health check endpoint",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 NODE_DEV=development DEBUG=1 node server.js",
+    "build": "mkdir -p dist && cp package.json dist/ && cp -r node_modules dist/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/inspector": "^0.17.2",
+    "express": "^4.21.1",
+    "dotenv": "^16.4.5",
+    "http-proxy-middleware": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "inspector",
+    "model-context-protocol"
+  ],
+  "author": "",
+  "license": "MIT"
+}
