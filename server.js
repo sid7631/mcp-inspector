@@ -19,9 +19,9 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 process.env.DEBUG = process.env.DEBUG || '1';
 
 // Port configuration - everything runs on port 3000
-const PORT = process.env.PORT || 3000;
-const INSPECTOR_CLIENT_PORT = 6274; // Internal port for inspector client
-const SERVER_PORT = process.env.SERVER_PORT || 6277;
+const PORT = process.env.PORT || 8080; // Main port for health check + UI
+const INSPECTOR_CLIENT_PORT = 6274; // Internal port for inspector client (don't change)
+const SERVER_PORT = process.env.SERVER_PORT || 6277; // Internal port for inspector server
 
 // Set a dummy token to satisfy the proxy - auth is disabled anyway
 const DUMMY_TOKEN = 'wrapper-no-auth-needed';
@@ -51,6 +51,26 @@ app.get('/healthz', (req, res) => {
   });
 });
 
+// Proxy routes for MCP server endpoints (so they're accessible on port 8080)
+// This allows external access to the inspector's proxy server through port 8080
+app.use('/mcp', createProxyMiddleware({
+  target: `http://localhost:${SERVER_PORT}`,
+  changeOrigin: true,
+  pathRewrite: {
+    '^/mcp': '', // Remove /mcp prefix when forwarding
+  },
+  ws: true,
+  logLevel: 'silent',
+}));
+
+// Add a message endpoint proxy as well
+app.post('/message', createProxyMiddleware({
+  target: `http://localhost:${SERVER_PORT}`,
+  changeOrigin: true,
+  ws: false,
+  logLevel: 'silent',
+}));
+
 // Start the MCP Inspector in the background
 console.log('\n🔧 Starting MCP Inspector...');
 console.log(`   - Inspector client running internally on port ${INSPECTOR_CLIENT_PORT}`);
@@ -61,6 +81,8 @@ const inspector = spawn('npx', ['@modelcontextprotocol/inspector'], {
     ...process.env,
     CLIENT_PORT: INSPECTOR_CLIENT_PORT,
     SERVER_PORT,
+    // Set allowed origins to include our wrapper port
+    ALLOWED_ORIGINS: `http://localhost:${PORT},http://localhost:${INSPECTOR_CLIENT_PORT}`,
     // Set a consistent token for internal communication
     MCP_PROXY_AUTH_TOKEN: DUMMY_TOKEN,
     // Disable auto-opening browser in production
@@ -88,7 +110,29 @@ inspector.on('exit', (code) => {
 setTimeout(() => {
   console.log('\n🔗 Setting up proxy to MCP Inspector...');
   
-  // Proxy all other requests to the MCP Inspector client
+  // IMPORTANT: Specific routes must come BEFORE the catch-all proxy
+  
+  // Proxy routes for MCP server endpoints (so they're accessible on port 8080)
+  // This allows external access to the inspector's proxy server through port 8080
+  app.use('/mcp', createProxyMiddleware({
+    target: `http://localhost:${SERVER_PORT}`,
+    changeOrigin: true,
+    pathRewrite: {
+      '^/mcp': '', // Remove /mcp prefix when forwarding
+    },
+    ws: true,
+    logLevel: 'silent',
+  }));
+
+  // Add a message endpoint proxy as well
+  app.post('/message', createProxyMiddleware({
+    target: `http://localhost:${SERVER_PORT}`,
+    changeOrigin: true,
+    ws: false,
+    logLevel: 'silent',
+  }));
+  
+  // Proxy all OTHER requests to the MCP Inspector client UI (catch-all - must be last)
   app.use('/', createProxyMiddleware({
     target: `http://localhost:${INSPECTOR_CLIENT_PORT}`,
     changeOrigin: true,

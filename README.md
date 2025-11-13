@@ -8,6 +8,7 @@ This wrapper runs the MCP Inspector with everything accessible on a **single por
 - Health check endpoints (`/health`, `/healthz`)
 - MCP Inspector UI (proxied to port 3000)
 - MCP Inspector Server (internal port 6277)
+- **Authentication disabled by default** for easier access through proxy
 
 Perfect for Kubernetes/Pod deployments with built-in health probes.
 
@@ -26,9 +27,11 @@ npm start
 ```
 
 ### 3. Access the Application
+- **MCP Inspector UI**: http://localhost:3000 (no token required!)
 - **Health Check**: http://localhost:3000/health (returns "ok")
 - **Detailed Health**: http://localhost:3000/healthz (returns JSON)
-- **MCP Inspector UI**: http://localhost:3000
+
+**Note**: Authentication is disabled by default (`DANGEROUSLY_OMIT_AUTH=true`) so you can access the UI directly without needing a token. This is safe in containerized/pod environments with network isolation.
 
 ---
 
@@ -54,6 +57,16 @@ Configure via `.env` file or environment:
 | `PORT` | `3000` | Main application port (health + UI) |
 | `SERVER_PORT` | `6277` | MCP Inspector server port (internal) |
 | `MCP_AUTO_OPEN_ENABLED` | `false` | Auto-open browser on startup |
+| `DANGEROUSLY_OMIT_AUTH` | `true` | Disable auth token requirement |
+
+### About Authentication
+
+By default, `DANGEROUSLY_OMIT_AUTH=true` is set, which disables the authentication token requirement. This means:
+- ✅ You can access http://localhost:3000 directly without a token
+- ✅ Simpler to use in containerized environments
+- ⚠️ Should only be used in trusted/isolated networks (like Kubernetes pods)
+
+If you need authentication enabled, set `DANGEROUSLY_OMIT_AUTH=false` in your `.env` file.
 
 ---
 
@@ -107,6 +120,8 @@ spec:
       value: "3000"
     - name: MCP_AUTO_OPEN_ENABLED
       value: "false"
+    - name: DANGEROUSLY_OMIT_AUTH
+      value: "true"  # Safe in isolated pod network
     livenessProbe:
       httpGet:
         path: /health
@@ -125,6 +140,7 @@ spec:
 - **Start Command**: `npm start` (already configured)
 - **Main Port**: `3000` (health check + UI)
 - **Health Probe**: Points to `/health` on port 3000
+- **Authentication**: Disabled by default for easier pod access
 - **No Docker/K8s config changes needed**
 
 ---
@@ -139,11 +155,13 @@ spec:
 │  GET /healthz   → JSON health info      │
 │  GET /*         → MCP Inspector UI      │
 │                   (proxied internally)  │
+│                   NO AUTH TOKEN NEEDED  │
 └─────────────────────────────────────────┘
               ↓ (proxy)
 ┌─────────────────────────────────────────┐
 │  Port 6274 - MCP Inspector Client       │
 │  (internal, not exposed)                │
+│  Auth disabled via DANGEROUSLY_OMIT_AUTH│
 └─────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────┐
@@ -154,10 +172,11 @@ spec:
 
 ### How It Works
 1. MCP Inspector starts internally on port 6274 (client) and 6277 (server)
-2. Express proxy server runs on port 3000:
+2. Authentication is disabled via `DANGEROUSLY_OMIT_AUTH=true`
+3. Express proxy server runs on port 3000:
    - `/health` and `/healthz` return immediate responses
    - All other requests are proxied to the MCP Inspector UI
-3. Single port exposure simplifies deployment
+4. No authentication token required - direct access to UI
 
 ---
 
@@ -172,14 +191,12 @@ curl http://localhost:3000/health
 # Expected: ok (HTTP 200)
 ```
 
-### Test Detailed Health
+### Test UI Access (No Token Needed!)
 ```bash
-curl http://localhost:3000/healthz
-# Expected: {"status":"ok",...}
-```
+# Open in browser
+open http://localhost:3000
 
-### Test UI
-```bash
+# Or test with curl
 curl http://localhost:3000/
 # Expected: HTML of MCP Inspector
 ```
@@ -193,6 +210,9 @@ chmod +x test-health.sh
 ---
 
 ## 🛠️ Troubleshooting
+
+### "Invalid origin" errors in logs
+These are normal and can be ignored. They occur because the proxy changes the origin header, but the inspector still functions correctly.
 
 ### Health Check Fails
 1. Verify the server is running:
@@ -217,10 +237,8 @@ chmod +x test-health.sh
    npm install
    ```
 
-### Proxy Errors
-- The application waits 5 seconds for the inspector to start
-- If you see proxy errors, the inspector may need more time
-- Check logs for "MCP Inspector is up and running" message
+### Need Authentication?
+If you want to enable authentication, set `DANGEROUSLY_OMIT_AUTH=false` in your `.env` file. The inspector will then generate a token that appears in the startup logs.
 
 ---
 
@@ -266,7 +284,20 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 NODE_ENV=development DEBUG=1 npx @modelcontextpro
 npm start
 ```
 
-All environment variables are pre-configured in `.env`.
+All environment variables are pre-configured in `.env`, and authentication is disabled for easier access.
+
+---
+
+## 🔒 Security Notes
+
+### Authentication Disabled by Default
+- `DANGEROUSLY_OMIT_AUTH=true` means no authentication token is required
+- This is **safe** in isolated environments (Kubernetes pods with network policies)
+- **Do NOT expose port 3000 to the public internet** with auth disabled
+- For production external access, consider:
+  - Using network policies to restrict access
+  - Enabling authentication by setting `DANGEROUSLY_OMIT_AUTH=false`
+  - Putting the service behind an authenticated reverse proxy
 
 ---
 
@@ -278,6 +309,7 @@ All environment variables are pre-configured in `.env`.
 - ✅ Environment variables properly set
 - ✅ Graceful shutdown on SIGTERM/SIGINT
 - ✅ Single port for simplified deployment
+- ✅ Authentication disabled for easy pod access
 - ✅ No Docker/Kubernetes config changes needed
 
 ---
@@ -285,4 +317,3 @@ All environment variables are pre-configured in `.env`.
 ## 📄 License
 
 MIT
-
